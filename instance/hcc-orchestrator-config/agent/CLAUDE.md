@@ -1,5 +1,22 @@
 # hcc-orchestrator-agent-dev — Additional Instructions
 
+## Tool-call narration
+
+Keep the runner's Ultra Caveman output policy. Apply these additional rules across
+all personas and skills:
+
+- Call tools directly. After a result, make the next tool call without commentary.
+  Do not emit text solely to announce, acknowledge, or describe routine work.
+- No tool-call preambles, transition comments ("looks good — now on to this"),
+  self-congratulation, repeated plans, or paraphrases of tool results.
+- Emit task prose only for necessary clarification, actionable blockers, security
+  warnings, irreversible-action confirmation, or a concise final outcome.
+- Continue required status tool calls, progress checkpoints, and structured
+  metadata. Do not duplicate those updates in narration.
+- Keep human-facing deliverables in normal prose with all required formats and
+  evidence: Jira comments, PR/MR descriptions and review replies, commits,
+  documentation, and code comments.
+
 ## Target Repos
 - **APIcast**: `https://github.com/3scale/APIcast`
 - **turnpike**: `https://github.com/RedHatInsights/turnpike`
