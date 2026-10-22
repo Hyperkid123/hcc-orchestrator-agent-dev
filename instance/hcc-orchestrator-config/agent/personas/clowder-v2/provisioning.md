@@ -1,8 +1,8 @@
 ## ClowdAppRef Provisioning And Cutover
 
-Read this appendix only for tickets that create, modify, cut over, or remove a `ClowdAppRef`.
+Read only for tickets that create, modify, cut over, or remove a `ClowdAppRef`.
 
-### Resource Contract
+### Resource contract
 
 ```yaml
 apiVersion: cloud.redhat.com/v1alpha1
@@ -29,29 +29,36 @@ spec:
     - <consumer-clowdapp-name>
 ```
 
-Obtain names, environment, hostname, ports, TLS, and authentication requirements from authoritative deployment configuration.
+Take names, environment, hostname, ports, TLS, and auth requirements from authoritative deployment configuration.
 
 ### Rules
 
-- `metadata.name` must equal the dependency string declared by consumers. It becomes the first V2 map key.
-- `deployments[].name` becomes the second V2 map key.
-- `deployments[].hostname` is a hostname or IP only, not a URL or `host:port`.
-- Enable the public and/or private `webServices` entry actually consumed. Do not use deprecated `web: true`.
-- `serves` contains consumer `ClowdApp.metadata.name` values, not namespaces, deployment names, or dependency names.
-- Avoid duplicate ref names for one environment, including duplicates across namespaces.
-- For TLS, set `webServices.<service>.tls: true` and configure both `remoteEnvironment.tls.port` and `.privatePort`. Current Clowder requires both before treating TLS as configured, even for public-only use.
+- `metadata.name` = dependency string declared by consumers. First V2 map key.
+- `deployments[].name` = second V2 map key.
+- `deployments[].hostname` = hostname or IP only. No scheme, no `host:port`.
+- Enable only the `public`/`private` `webServices` entry actually consumed. No deprecated `web: true`.
+- `serves` = consumer `ClowdApp.metadata.name` values only. Not namespaces, deployment names, or dependency names.
+- Avoid duplicate ref names in one environment, including across namespaces.
+- TLS: set `webServices.<service>.tls: true` and both `remoteEnvironment.tls.port` and `.privatePort`. Clowder requires both even for public-only use.
 - CRD validation does not enforce service/TLS/port relationships. A valid resource can still emit HTTP or no endpoint.
-- H2C-only refs currently do not produce V2 endpoints.
-- Do not rely on `status.ready` or `spec.disabled` as cutover gates without verifying deployed Clowder behavior.
+- H2C-only refs produce no V2 endpoints.
+- Do not use `status.ready` or `spec.disabled` as cutover gates without verifying deployed Clowder behavior.
 
-### Gradual Cutover
+### Authentication
+
+- `authenticated: true` → every remote consumer adds the SDK-issued bearer alongside its existing credential. Never replace `x-rh-identity` or PSK.
+- `authenticated: false` → no bearer.
+- Remote consumers follow the same auth rules as local consumers in `personas/clowder-v2/migration-common.md`.
+- `ClowdAppRef` provides no custom CA path. Remote certificates must be system-trusted.
+
+### Gradual cutover
 
 When a local `ClowdApp` and remote `ClowdAppRef` share a dependency name:
 
-1. Create the ref with `serves` omitted or empty; consumers remain local.
+1. Create the ref with `serves` omitted or empty. Consumers remain local.
 2. Add one consumer app name to `serves`.
 3. Inspect that consumer's generated `cdappconfig.json`.
-4. Verify the V2 URI, TLS, authentication, and live connectivity.
+4. Verify V2 URI, TLS, authentication, and live connectivity.
 5. If V1 fallback remains, verify its flat endpoint also switched coherently.
 6. Continue consumer by consumer.
 
@@ -68,4 +75,4 @@ kubectl get secret <consumer> -n <namespace> \
   | jq '.dependencyEndpoints.v2["<dependency-app>"]["<deployment>"]'
 ```
 
-Confirm remote certificates are system-trusted. `ClowdAppRef` provides no custom CA path. After deleting a ref, explicitly trigger or wait for consumer reconciliation and recheck generated configuration because deletion may not immediately enqueue affected consumers.
+After deleting a ref, trigger or await consumer reconciliation and recheck generated configuration. Deletion may not immediately enqueue affected consumers.

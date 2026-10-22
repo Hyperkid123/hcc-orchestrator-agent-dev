@@ -54,6 +54,10 @@ GO_VERSION_RE = re.compile(
 GO_HELPER_RE = re.compile(
     rf"\b(?:\w+\.)?({'|'.join(sorted(GO_HELPERS))})\s*\("
 )
+KESSEL_SDK_RE = re.compile(r"kessel[-_. ]?sdk|@project-kessel/", re.IGNORECASE)
+OAUTH2_CC_RE = re.compile(
+    r"oauth2.{0,24}client.{0,24}credentials", re.IGNORECASE
+)
 
 
 @dataclass(frozen=True)
@@ -73,6 +77,7 @@ class Assessment:
     verified: list[str] = field(default_factory=list)
     errors: list[Finding] = field(default_factory=list)
     warnings: list[Finding] = field(default_factory=list)
+    gate_evidence: dict[str, list[str]] = field(default_factory=dict)
 
     @property
     def passed(self) -> bool:
@@ -351,6 +356,34 @@ def analyze(repo: Path, phase: str) -> Assessment:
     )
     assessment.helper_calls = sorted(helper_calls + go_helper_calls)
     all_text = "\n".join(text_files.values())
+
+    def _evidence(pattern: re.Pattern[str]) -> list[str]:
+        hits = [
+            f"{path.relative_to(repo)}:{line_number} {line.strip()[:120]}"
+            for path, text in text_files.items()
+            for line_number, line in enumerate(text.splitlines(), start=1)
+            if pattern.search(line)
+        ]
+        return hits[:8]
+
+    sdk_hits = _evidence(KESSEL_SDK_RE)
+    oauth_hits = _evidence(OAUTH2_CC_RE)
+    assessment.gate_evidence["G1_kessel_sdk"] = sdk_hits
+    assessment.gate_evidence["oauth2_client_credentials"] = oauth_hits
+    if not sdk_hits:
+        assessment.warnings.append(
+            Finding(
+                "No Kessel SDK evidence found (gate G1). If the SDK is absent, make no changes; emit a gate note and recommend a follow-up ticket to add it.",
+                "Searched dependency manifests, lockfiles, vendor trees, and imports.",
+            )
+        )
+    elif not oauth_hits:
+        assessment.warnings.append(
+            Finding(
+                "Kessel SDK found but no OAuth2ClientCredentials usage detected. Confirm the installed SDK exposes it before planning authenticated calls.",
+            )
+        )
+
     kessel_env_discovery = _kessel_env_discovery(repo, text_files)
     kessel_helper_targets = _helper_call_targets(assessment.helper_calls)
     kessel_v2_helper = any(
@@ -548,7 +581,7 @@ def analyze(repo: Path, phase: str) -> Assessment:
     if credential_functions:
         assessment.warnings.append(
             Finding(
-                "Files contain both bearer and PSK logic; verify the credential schemes are mutually exclusive.",
+                "Files contain both bearer and PSK logic; verify the bearer is sent alongside the existing PSK/identity credential and does not replace it.",
                 ", ".join(sorted(credential_functions)),
             )
         )
@@ -638,9 +671,28 @@ def render_markdown(assessment: Assessment) -> str:
         f"- Status: **{status}**",
         f"- Repository: `{assessment.repo}`",
         "",
-        "### Verified Evidence",
+        "### Gates",
         "",
     ]
+    sdk_hits = assessment.gate_evidence.get("G1_kessel_sdk", [])
+    lines.append(
+        "- G1 Kessel SDK present: **PASS**"
+        if sdk_hits
+        else "- G1 Kessel SDK present: **UNKNOWN** — no SDK evidence; no migration work is permitted."
+    )
+    for hit in sdk_hits[:3]:
+        lines.append(f"  - `{hit}`")
+    oauth_hits = assessment.gate_evidence.get("oauth2_client_credentials", [])
+    if sdk_hits:
+        lines.append(
+            "- OAuth2ClientCredentials usage: **PASS**"
+            if oauth_hits
+            else "- OAuth2ClientCredentials usage: **UNKNOWN** — confirm the installed SDK exposes it."
+        )
+        for hit in oauth_hits[:3]:
+            lines.append(f"  - `{hit}`")
+
+    lines.extend(["", "### Verified Evidence", ""])
     lines.extend(f"- {item}" for item in assessment.verified)
     if not assessment.verified:
         lines.append("- None detected.")

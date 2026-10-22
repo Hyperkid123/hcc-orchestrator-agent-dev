@@ -19,8 +19,13 @@ service natively serves.
 |---|---|---|
 | Export service | `/app/export/v1` | N/A |
 | RBAC | `/_private/api`, `/_private/_s2s` | `/api/rbac` |
-| Sources | `/internal/v2.0` | N/A |
+| Sources | `/internal/v2.0` (legacy), `/internal/sources/v2.0` (standard) | N/A |
 | Notifications | N/A | `/api/notifications-gw/` |
+
+Verified 2026-10-22: `sources-api-go` main registers both `/internal/{v1.0,v2.0}` and
+`/internal/sources/{v1.0,v2.0}` (`routes.go:161-182`). The `/internal/sources/v2` example above
+omits the `.0`; the deployed code serves `/internal/sources/v2.0`. Use the packet's exact path
+and reconcile this before changing a basepath.
 
 ## How to apply this during a Clowder V2 migration
 
