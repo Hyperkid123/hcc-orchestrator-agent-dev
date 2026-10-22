@@ -63,7 +63,7 @@ Use these without asking when repository evidence supports them.
 ### Authentication rules
 
 - `authenticated: true` → the call needs an SDK-issued bearer.
-- `authenticated: false` → no bearer. Preserve existing auth. Record it; this case has not been observed in current migrations.
+- `authenticated: false` → no bearer. Preserve existing auth and record it. Possible in principle, but not expected for current apps or use cases.
 - Bearer source is the Kessel SDK `OAuth2ClientCredentials`. Never specify a hand-rolled token client, cache, or refresh loop.
 - The bearer is additive: it goes alongside `x-rh-identity`, PSK, or any other existing credential. It never replaces them.
 - Record the SDK version and confirm `OAuth2ClientCredentials` is available from the installed package.

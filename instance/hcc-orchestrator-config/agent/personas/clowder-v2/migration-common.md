@@ -50,7 +50,7 @@ Missing or `Decision required` → do not edit that item.
 - **Boundary**: apply at the shared request/client boundary, not at individual call sites.
 - **Workloads**: wire every independently deployed server, worker, and job that can execute the call.
 - **`authenticated: true`**: bearer required on every existing call to RBAC, Sources, Export service, and Kessel. No untouched calls.
-- **`authenticated: false`**: do not add a bearer. Preserve existing auth. Record the occurrence in the PR body.
+- **`authenticated: false`**: do not add a bearer. Preserve existing auth and record the occurrence in the PR body. Not expected for current apps; do not treat it as an error.
 - **Existing calls only**: do not attach a bearer to a call path that does not exist yet.
 - **Do not invent** OAuth client credentials, bearer-token env vars, PSK values, identity forwarding, or token-refresher sidecars.
 - **Missing credential wiring** for a workload → Clarification Request. Do not construct it.

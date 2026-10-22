@@ -39,7 +39,7 @@ Clowder dependency-endpoint and migration tickets use a gated workflow:
 
 Authentication: the bearer comes from the Kessel SDK `OAuth2ClientCredentials` and is
 always sent alongside `x-rh-identity`/PSK, never replacing it. `authenticated: true`
-requires the bearer; `authenticated: false` does not.
+is the expected norm and requires the bearer; `authenticated: false` does not.
 
 For `ClowdAppRef` provisioning or
 cutover tickets, also follow

@@ -54,7 +54,7 @@ Note: G1 + G5 removed `clowder-v2-migration-no-kessel`; the assessment gate note
 |---|---|
 | A10 | When the resolved V2 endpoint has `authenticated: true`, **every existing call** to RBAC, Sources, Export service, or Kessel MUST carry the SDK-issued bearer. There is no case where such a call is left untouched, apart from 2.4. `[NEW]` |
 | A11 | When the resolved V2 endpoint has `authenticated: false`, do **NOT** add a bearer. Preserve existing auth only, and record the occurrence in the packet. |
-| A12 | No `authenticated: false` endpoint has been observed in this migration so far; `authenticated: true` is the expected norm. The flag is authoritative — do not attach a bearer to a `false` endpoint by inference. (Operator following up on the `false` case.) |
+| A12 | `authenticated: true` is the expected norm for all current apps and use cases. `authenticated: false` is possible but not expected; if it appears, do not attach a bearer and record it. The flag is authoritative. |
 | A13 | `authenticated` is a signal only: it is not credentials and does not name a scheme. The scheme is fixed by A1 regardless of flag value. |
 | A14 | Do not attach a bearer to a call that does not exist yet. A10 governs existing calls; it does not authorize new call paths. |
 
@@ -131,6 +131,7 @@ A10 as written — see Q2.
 | Q5 | Is discovery-only migration still allowed? | Only when `authenticated: false`. Since none has been observed, assume not. |
 | Q7 | Is the SDK token accepted by RBAC, Sources, and Export as well as Kessel? | Yes — the bearer authenticates the service to the cluster. Recorded as operator field evidence, not independently code-verified per service. |
 | Q8 | Is SDK presence alone enough, or are wired credentials required? | Presence alone satisfies G1. Missing credential wiring is a packet gap, not an entry-gate stop (A4). |
+| Q11 | Is `authenticated: false` expected? | No. `true` is the norm for current apps and use cases; `false` is possible in principle but not expected. The flag stays authoritative (A11/A12). |
 
 ### 6.2 Still open
 
