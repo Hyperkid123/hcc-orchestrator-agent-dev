@@ -17,9 +17,9 @@ of dependencies and depends on network reachability this bot may not have.
 
 ## Downstream auth (verified)
 
-| Dependency | Accepts | Evidence |
-|---|---|---|
-| Sources | `x-rh-identity`, `x-rh-sources-psk`, certificate-based identity. Does not parse `Authorization`. | `sources-api-go` main `59837a7`, `middleware/authorization.go` and `middleware/headers.go` (2026-10-22) |
+| Dependency | Service authentication | End-user context | Evidence |
+|---|---|---|---|
+| Sources | `x-rh-sources-psk`; certificate-based identity | `x-rh-identity` | `sources-api-go` main `59837a7`, `middleware/authorization.go` and `middleware/headers.go` (2026-10-22). Does not parse `Authorization`; the gateway validates the bearer. |
 
 Do not infer another service's acceptance from this row. A bearer is still attached for
 `authenticated: true`; see `personas/clowder-v2/migration-common.md`.

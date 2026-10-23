@@ -62,16 +62,26 @@ Use these without asking when repository evidence supports them.
 
 ### Authentication rules
 
-- `authenticated: true` → the call needs an SDK-issued bearer.
-- `authenticated: false` → no bearer. Keep current behavior and record it. Possible in principle, but not expected for current apps or use cases.
+Credential semantics:
+
+- `x-rh-identity`: end-user context. Does not authenticate the calling service.
+- Bearer: service authentication for cross-cluster calls through the gateway.
+- PSK: service authentication to an in-cluster private API.
+
+Baseline service-to-service calls are either unauthenticated (identity only) or PSK-authenticated (identity optional). Migration adds bearer authentication for cross-cluster calls.
+
+Rules:
+
+- `authenticated: true` → send the SDK-issued bearer. Replace PSK if present.
+- `authenticated: false` → no bearer. Keep current behavior, including PSK.
 - Bearer source is the Kessel SDK `OAuth2ClientCredentials`. Never specify a hand-rolled token client, cache, or refresh loop.
-- `x-rh-identity` present → keep it and add the bearer. Never replace it.
-- PSK present → send the bearer instead of PSK when `authenticated: true`. Do not send both.
-- PSK-only call (no `x-rh-identity`) → confirm the downstream accepts the bearer alone. `sources-api-go` requires `x-rh-identity` or PSK and ignores `Authorization`; unconfirmed → `Decision required`.
+- Keep `x-rh-identity` when present. It is user context, not a service credential; never treat it as authentication or as a substitute for the bearer.
+- Do not send PSK and the bearer together.
+- `sources-api-go` does not parse `Authorization`; the gateway validates the bearer. If a call bypasses the gateway path, `Decision required`.
 - Record the SDK version and confirm `OAuth2ClientCredentials` is available from the installed package.
 - Record credential wiring and every independently deployed workload that can execute the call.
 - Missing credential wiring for a workload → packet gap, not an entry-gate failure.
-- A service ignoring `Authorization` is not a blocker when `x-rh-identity` is present: it can authenticate via identity while the bearer authenticates the service to the cluster. Verified for `sources-api-go`: no bearer parsing on main; OIDC PR #962 closed unmerged.
+- A service ignoring `Authorization` is not a blocker; the gateway validates the bearer. Verified for `sources-api-go`: no bearer parsing on main; OIDC PR #962 closed unmerged.
 - If `authenticated: true` requires any auth mechanism other than the Kessel SDK bearer → `Decision required`.
 
 Skip criteria, complete list: G1/G2 failure, `authenticated: false`, endpoint absent with no fallback.
@@ -99,7 +109,7 @@ Skip criteria, complete list: G1/G2 failure, `authenticated: false`, endpoint ab
    - Eligible work and Kessel SDK present → `clowder-v2-migration-kessel`.
    - G1 or G2 fails → no persona. Post a gate note to the Jira ticket. For G1, recommend a follow-up ticket to add the SDK.
    - No eligible dependency → no persona. `No implementation required`.
-5. For each eligible dependency record: app key, deployment key, public/private, current discovery mechanism, fallback, request paths and shared boundary, existing auth, credential wiring, TLS/CA today and expected, and every workload that executes the call.
+5. For each eligible dependency record: app key, deployment key, public/private, current discovery mechanism, fallback, request paths and shared boundary, credential set per call (identity, PSK, neither), existing auth, credential wiring, TLS/CA today and expected, and every workload that executes the call.
 6. Verify the effective Kessel SDK version and exact V2 helper contract from installed source, lockfiles, vendor tree, or a live import.
 7. For Export service and Sources clients, verify the internal basepath from `references/ewgw-internal-api-basepath.md`, the provider's current routes, and focused URL tests. Provider exposes only `public` → no basepath change. Only Export service and Sources.
 

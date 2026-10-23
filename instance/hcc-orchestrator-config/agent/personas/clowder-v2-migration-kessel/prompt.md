@@ -25,9 +25,10 @@ If the packet selects this persona but the repository lacks the verified integra
 ### Authentication
 
 - Obtain the bearer with the SDK's `OAuth2ClientCredentials`. Do not hand-roll token acquisition, refresh, or caching.
-- `x-rh-identity` present → keep it and add the bearer. Never replace it.
-- PSK present → send the bearer instead of PSK when `authenticated: true`. Do not send both.
-- `authenticated: false` → no bearer; keep current behavior.
+- `authenticated: true` → send the bearer; replace PSK if present.
+- `authenticated: false` → no bearer; keep current behavior, including PSK.
+- Keep `x-rh-identity` when present. It is end-user context, not service authentication.
+- Do not send PSK and the bearer together.
 - Wire every independently deployed workload that can execute the call.
 
 All endpoint, TLS, fallback, basepath, implementation, validation, PR, and completion rules come from `personas/clowder-v2/migration-common.md`.

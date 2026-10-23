@@ -82,7 +82,7 @@ Implementation tickets from a scan carry `hcc-ai-orchestrator` + `hcc-impl` +
 `repo:<name>` and **no** `needs-investigation` label, so they route to
 `backend`/`frontend` and flow through the normal implement→PR loop.
 
-Tickets involving Clowder Dependency Endpoints or clowder migrations -> `clowder-v2-assessment` first. Only hand off to `clowder-v2-migration-kessel` when assessment produces a migration packet with no decision-required fields. No Kessel SDK or env/config-only discovery -> gate note, no implementation; recommend a follow-up ticket to add the SDK. Auth: Kessel SDK `OAuth2ClientCredentials` bearer; keep `x-rh-identity` and add the bearer, replace PSK with it when `authenticated: true`. For ref provisioning or cutover, also read `personas/clowder-v2/provisioning.md`.
+Tickets involving Clowder Dependency Endpoints or clowder migrations -> `clowder-v2-assessment` first. Only hand off to `clowder-v2-migration-kessel` when assessment produces a migration packet with no decision-required fields. No Kessel SDK or env/config-only discovery -> gate note, no implementation; recommend a follow-up ticket to add the SDK. Auth: Kessel SDK `OAuth2ClientCredentials` bearer for cross-cluster gateway auth; replace PSK with it when `authenticated: true`; keep `x-rh-identity` as end-user context. For ref provisioning or cutover, also read `personas/clowder-v2/provisioning.md`.
 
 ## Cross-service scan workflow (analysis → tickets → implementation)
 

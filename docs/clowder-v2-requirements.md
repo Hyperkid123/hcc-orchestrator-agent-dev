@@ -29,6 +29,16 @@ Note: G1 + G5 removed `clowder-v2-migration-no-kessel`; the assessment gate note
 
 ## 2. Authentication
 
+### 2.0 Credential semantics
+
+| Credential | Function |
+|---|---|
+| `x-rh-identity` | End-user context. Does not authenticate the calling service. |
+| Bearer | Authenticates the calling service for cross-cluster calls through the gateway. |
+| PSK | Authenticates the calling service to an in-cluster private API. |
+
+Service-to-service calls are either unauthenticated (identity only) or PSK-authenticated (identity optional). Migration adds bearer authentication for cross-cluster calls.
+
 ### 2.1 Bearer issuance
 
 | ID | Requirement |
@@ -42,9 +52,9 @@ Note: G1 + G5 removed `clowder-v2-migration-no-kessel`; the assessment gate note
 
 | ID | Requirement |
 |---|---|
-| A5 | **Always add the bearer token alongside `x-rh-identity`. Never replace `x-rh-identity` with it.** `[NEW]` |
-| A6 | `x-rh-identity` present → keep it and add the bearer. PSK present → the bearer replaces PSK when `authenticated: true`; do not send both. Any other existing credential → preserve unless the packet says otherwise. |
-| A6b | PSK-only call (no `x-rh-identity`): confirm the downstream accepts the bearer alone before removing PSK. `sources-api-go` requires `x-rh-identity` or PSK and ignores `Authorization`; unconfirmed → `Decision required`. |
+| A5 | Keep `x-rh-identity` when present. It is end-user context, not service authentication; never replace it or treat it as a service credential. `[NEW]` |
+| A6 | `authenticated: true` → send the bearer. If the call sends PSK, the bearer replaces PSK; do not send both. Any other existing credential → preserve unless the packet says otherwise. |
+| A6b | The bearer is validated by the gateway. `sources-api-go` does not parse `Authorization`; a call that bypasses the gateway path requires confirmation (`Decision required`). |
 | A7 | Never send two competing credentials *of the same scheme*. One bearer, not two. |
 | A8 | Apply the token at the shared request boundary so every caller workload uses it, not at individual call sites. |
 | A9 | Every independently deployed server, worker, and job that can execute the call MUST receive the credential wiring. A server-only change is incomplete. |
@@ -68,7 +78,7 @@ A10 as written — see Q2.
 |---|---|
 | A15 | The only permitted exception to A10 is an enumerated skip criterion. Skips MUST be recorded in the packet and surfaced in PR *Human Verification Required*, with the criterion cited. |
 | A16 | **Closed skip list**: (a) G1/G2 failed — no work at all; (b) `authenticated: false` (A11); (c) V2 endpoint absent and the packet specifies no fallback. No other skip exists. `[CHANGED]` |
-| A17 | "Downstream does not validate a bearer" is **not** a skip criterion. `[CHANGED]` Verified 2026-10-22: `sources-api-go` main performs no `Authorization`/JWT/JWKS parsing, so a bearer is ignored there — but the call still authenticates via `x-rh-identity`/PSK. The bearer is for service-to-cluster admission; app-level auth remains on the existing header. Attaching it is additive, not a replacement. See 7.1. |
+| A17 | "Downstream does not validate a bearer" is **not** a skip criterion. `[CHANGED]` `sources-api-go` main performs no `Authorization`/JWT/JWKS parsing; the gateway validates the bearer. `x-rh-identity` remains end-user context, not service authentication. See 7.1. |
 
 ### 2.5 Preserved prohibitions
 
@@ -114,7 +124,7 @@ A10 as written — see Q2.
 |---|---|---|---|
 | D1 | `no-kessel` persona migrated RBAC/Sources/Export discovery without any Kessel integration | G1: no SDK → no changes; persona deleted | Gate note in the assessment replaces it. No separate implementation path exists. |
 | D2 | "Do not introduce, swap, or remove an authentication mechanism" (`common:57`) | A1 mandates Kessel SDK `OAuth2ClientCredentials` | Auth is no longer purely "preserve existing"; a specific mechanism is prescribed. |
-| D3 | Warn-and-skip when downstream does not validate a bearer (`assessment:111`) | A17: non-validation is expected and never justifies a skip | `sources-api-go`-style cases now get the token attached alongside `x-rh-identity`. |
+| D3 | Warn-and-skip when downstream does not validate a bearer (`assessment:111`) | A17: non-validation is expected and never justifies a skip | `sources-api-go`-style cases get the bearer attached; the gateway validates it. |
 | D4 | Env/config-only discovery is "out of scope," other deps may still migrate (`common:47-49`) | G2: no Clowder implementation → no changes at all | Whole-ticket stop instead of partial migration. |
 | D5 | Discovery-only packet allowed when auth is scoped out (`common:117`) | A10 removes that exception when `authenticated: true` | Discovery-only now survives only via A11 (`authenticated: false`). |
 | D6 | `no-kessel` persona required an "existing non-Kessel mechanism" | A1 requires the Kessel SDK mechanism | Resolved by deleting the persona. |
@@ -132,7 +142,7 @@ A10 as written — see Q2.
 | Q5 | Is discovery-only migration still allowed? | Only when `authenticated: false`. Since none has been observed, assume not. |
 | Q7 | Is the SDK token accepted by RBAC, Sources, and Export as well as Kessel? | Yes — the bearer authenticates the service to the cluster. Recorded as operator field evidence, not independently code-verified per service. |
 | Q8 | Is SDK presence alone enough, or are wired credentials required? | Presence alone satisfies G1. Missing credential wiring is a packet gap, not an entry-gate stop (A4). |
-| Q9 | Export callers use `x-rh-exports-psk`; is bearer + PSK intended? | No. PSK is replaced by the bearer when `authenticated: true`; `x-rh-identity` is retained. |
+| Q9 | Export callers use `x-rh-exports-psk`; is bearer + PSK intended? | No. PSK is service authentication; the bearer replaces it for the cross-cluster gateway. `x-rh-identity` is user context and is retained. |
 | Q11 | Is `authenticated: false` expected? | No. `true` is the norm for current apps and use cases; `false` is possible in principle but not expected. The flag stays authoritative (A11/A12). |
 
 ### 6.2 Still open
@@ -159,7 +169,7 @@ Repo `github.com/RedHatInsights/sources-api-go`, default branch `main` at `59837
 - `middleware/internal_auth.go` from that work is **not** on `main` and has no commit history on the default branch. Internal routes use the same `PermissionCheck`.
 - Internal route groups on `main`: `/internal/{v1.0,v2.0}` and `/internal/sources/{v1.0,v2.0}` (`routes.go:161-182`).
 
-**Conclusion:** a bearer is ignored, not rejected. A5/A17 are safe, and `x-rh-identity`/PSK remains the effective app-level auth.
+**Conclusion:** the app does not parse the bearer, by design — the gateway validates it. `x-rh-identity` carries end-user context; PSK is the in-cluster service credential. A5/A17 are safe.
 
 ### 7.2 Basepath drift — checked 2026-10-22
 

@@ -43,16 +43,25 @@ Missing or `Decision required` → do not edit that item.
 
 ### Authentication
 
+Credential semantics:
+
+- `x-rh-identity` carries end-user context. It does not authenticate the calling service.
+- The bearer authenticates the calling service for cross-cluster calls through the gateway.
+- PSK authenticates the calling service to an in-cluster private API.
+
+Baseline service-to-service calls are either unauthenticated (identity only) or PSK-authenticated (identity optional). Migration adds bearer authentication for cross-cluster calls.
+
+Rules:
+
 - **Bearer source**: Kessel SDK `OAuth2ClientCredentials`. Do not hand-roll a token client, cache, refresh loop, or credential provider.
-- **`x-rh-identity` present**: keep it and add the bearer. Never replace it.
-- **PSK present**: send the bearer instead of PSK when `authenticated: true`. Do not send both.
-- **PSK-only call** (no `x-rh-identity`): confirm the downstream accepts the bearer alone before removing PSK. Verified `sources-api-go` requires `x-rh-identity` or PSK and ignores `Authorization`; unconfirmed → raise a Clarification Request.
-- **`authenticated: false`**: no bearer. Keep current behavior.
+- **`authenticated: true`**: send the bearer. If the call currently sends PSK, the bearer replaces PSK. Do not send both.
+- **`x-rh-identity`**: keep it when present. It is user context, not a service credential. Never treat it as authentication or as a substitute for the bearer.
+- **`authenticated: false`**: no bearer. Keep current behavior, including PSK.
 - **One bearer** per request. No competing same-scheme credentials.
 - **Boundary**: apply at the shared request/client boundary, not at individual call sites.
 - **Workloads**: wire every independently deployed server, worker, and job that can execute the call.
-- **`authenticated: true`**: bearer required on every existing call to RBAC, Sources, Export service, and Kessel. No untouched calls.
 - **Existing calls only**: do not attach a bearer to a call path that does not exist yet.
+- **Direct private-API path**: `sources-api-go` does not parse `Authorization`; the gateway validates the bearer. If a call bypasses that path, raise a Clarification Request.
 - **Do not invent** OAuth client credentials, bearer-token env vars, PSK values, identity forwarding, or token-refresher sidecars.
 - **Missing credential wiring** for a workload → Clarification Request. Do not construct it.
 
@@ -64,7 +73,7 @@ Skip criteria — the complete list:
 
 Record every skip in PR **Human Verification Required** with the criterion cited.
 
-Downstream non-validation is not a skip. When `x-rh-identity` is present, a service may ignore `Authorization` and still authenticate via identity; the bearer authenticates the service to the cluster. Attach it.
+Downstream non-validation is not a skip. The destination app may ignore `Authorization`; the gateway validates the bearer. Attach it.
 
 ### Fallback
 
@@ -124,8 +133,8 @@ Java and other languages:
 
 | Input | URI source | TLS verification | Authentication |
 |---|---|---|---|
-| V2 endpoint with URI and CA path | V2 `.uri` / `.Uri` | V2 CA filesystem path | `authenticated: true` → keep `x-rh-identity`, add bearer, replace PSK; `false` → current auth |
-| V2 endpoint with URI and no CA | V2 `.uri` / `.Uri` | System trust | `authenticated: true` → keep `x-rh-identity`, add bearer, replace PSK; `false` → current auth |
+| V2 endpoint with URI and CA path | V2 `.uri` / `.Uri` | V2 CA filesystem path | `authenticated: true` → bearer, replacing PSK; keep identity if sent. `false` → current behavior |
+| V2 endpoint with URI and no CA | V2 `.uri` / `.Uri` | System trust | `authenticated: true` → bearer, replacing PSK; keep identity if sent. `false` → current behavior |
 | V2 lookup absent, packet specifies a fallback | Existing resolver | Existing fallback CA behavior | Existing fallback auth behavior |
 | V2 lookup absent, packet specifies no fallback | Leave unmigrated; Clarification Request | — | — |
 | Non-Clowder/local/test | Existing env/default | Existing safe verification | Existing local/test auth behavior |

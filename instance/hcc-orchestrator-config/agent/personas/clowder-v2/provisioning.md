@@ -46,8 +46,9 @@ Take names, environment, hostname, ports, TLS, and auth requirements from author
 
 ### Authentication
 
-- `authenticated: true` → keep `x-rh-identity` and add the bearer; replace PSK with the bearer.
+- `authenticated: true` → cross-cluster consumers send the bearer; replace PSK with it.
 - `authenticated: false` → no bearer; keep current behavior.
+- Keep `x-rh-identity` when present; it is end-user context, not service authentication.
 - Remote consumers follow the same auth rules as local consumers in `personas/clowder-v2/migration-common.md`.
 - `ClowdAppRef` provides no custom CA path. Remote certificates must be system-trusted.
 
