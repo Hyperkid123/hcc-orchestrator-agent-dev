@@ -581,7 +581,7 @@ def analyze(repo: Path, phase: str) -> Assessment:
     if credential_functions:
         assessment.warnings.append(
             Finding(
-                "Files contain both bearer and PSK logic; verify the bearer is sent alongside the existing PSK/identity credential and does not replace it.",
+                "Files contain both bearer and PSK logic; verify PSK is replaced by the bearer when authenticated is true and x-rh-identity is retained.",
                 ", ".join(sorted(credential_functions)),
             )
         )

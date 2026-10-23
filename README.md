@@ -37,9 +37,9 @@ Clowder dependency-endpoint and migration tickets use a gated workflow:
    `Decision required` fields. It implements the packet and must not infer endpoint,
    auth, TLS, fallback, basepath, or workload details.
 
-Authentication: the bearer comes from the Kessel SDK `OAuth2ClientCredentials` and is
-always sent alongside `x-rh-identity`/PSK, never replacing it. `authenticated: true`
-is the expected norm and requires the bearer; `authenticated: false` does not.
+Authentication: the bearer comes from the Kessel SDK `OAuth2ClientCredentials`. Keep
+`x-rh-identity` and add the bearer; replace PSK with the bearer when
+`authenticated: true`. `authenticated: false` keeps current behavior.
 
 For `ClowdAppRef` provisioning or
 cutover tickets, also follow

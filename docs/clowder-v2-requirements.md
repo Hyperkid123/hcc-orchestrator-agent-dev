@@ -43,7 +43,8 @@ Note: G1 + G5 removed `clowder-v2-migration-no-kessel`; the assessment gate note
 | ID | Requirement |
 |---|---|
 | A5 | **Always add the bearer token alongside `x-rh-identity`. Never replace `x-rh-identity` with it.** `[NEW]` |
-| A6 | If the call already sends another valid credential (PSK, service-specific header), preserve it; the bearer is additive. `[NEW]` — sharpens the existing "preserve existing authorization headers" rule. |
+| A6 | `x-rh-identity` present → keep it and add the bearer. PSK present → the bearer replaces PSK when `authenticated: true`; do not send both. Any other existing credential → preserve unless the packet says otherwise. |
+| A6b | PSK-only call (no `x-rh-identity`): confirm the downstream accepts the bearer alone before removing PSK. `sources-api-go` requires `x-rh-identity` or PSK and ignores `Authorization`; unconfirmed → `Decision required`. |
 | A7 | Never send two competing credentials *of the same scheme*. One bearer, not two. |
 | A8 | Apply the token at the shared request boundary so every caller workload uses it, not at individual call sites. |
 | A9 | Every independently deployed server, worker, and job that can execute the call MUST receive the credential wiring. A server-only change is incomplete. |
@@ -131,6 +132,7 @@ A10 as written — see Q2.
 | Q5 | Is discovery-only migration still allowed? | Only when `authenticated: false`. Since none has been observed, assume not. |
 | Q7 | Is the SDK token accepted by RBAC, Sources, and Export as well as Kessel? | Yes — the bearer authenticates the service to the cluster. Recorded as operator field evidence, not independently code-verified per service. |
 | Q8 | Is SDK presence alone enough, or are wired credentials required? | Presence alone satisfies G1. Missing credential wiring is a packet gap, not an entry-gate stop (A4). |
+| Q9 | Export callers use `x-rh-exports-psk`; is bearer + PSK intended? | No. PSK is replaced by the bearer when `authenticated: true`; `x-rh-identity` is retained. |
 | Q11 | Is `authenticated: false` expected? | No. `true` is the norm for current apps and use cases; `false` is possible in principle but not expected. The flag stays authoritative (A11/A12). |
 
 ### 6.2 Still open
@@ -140,7 +142,6 @@ A10 as written — see Q2.
 | Q2 | A10 is silent on existing **plaintext HTTP** in-cluster calls to these services. Bearer or leave alone? | The original instruction keyed on HTTPS; the flag-based rule has no transport case. |
 | Q3 | How is `authenticated` known before implementation — sampled `cdappconfig.json`, provider manifest, or live endpoint? | Determines whether A10 can be applied mechanically or becomes a packet fact to verify. |
 | Q6 | Does "no Clowder implementation" (G2) include **manual `cdappconfig.json` parsing** and legacy `LoadedConfig.endpoints`, or only pure env vars? | Inventory shows both patterns (manual parse in malware-detection; legacy endpoints map in several repos). |
-| Q9 | A5 says "alongside `x-rh-identity`", but Export service callers authenticate with `x-rh-exports-psk`. Is bearer + PSK the intent there? | A5/A6 conflict for Export unless read as "alongside whatever existing credential." |
 | Q10 | If the SDK is present but the workload has no client-credentials wired, does the packet block or proceed unauthenticated? | A4 says raise a gap; A10 says the bearer is mandatory. Needs a precedence answer. |
 
 ---

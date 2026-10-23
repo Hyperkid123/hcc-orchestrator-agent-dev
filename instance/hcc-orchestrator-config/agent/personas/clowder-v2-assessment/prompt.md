@@ -63,13 +63,15 @@ Use these without asking when repository evidence supports them.
 ### Authentication rules
 
 - `authenticated: true` → the call needs an SDK-issued bearer.
-- `authenticated: false` → no bearer. Preserve existing auth and record it. Possible in principle, but not expected for current apps or use cases.
+- `authenticated: false` → no bearer. Keep current behavior and record it. Possible in principle, but not expected for current apps or use cases.
 - Bearer source is the Kessel SDK `OAuth2ClientCredentials`. Never specify a hand-rolled token client, cache, or refresh loop.
-- The bearer is additive: it goes alongside `x-rh-identity`, PSK, or any other existing credential. It never replaces them.
+- `x-rh-identity` present → keep it and add the bearer. Never replace it.
+- PSK present → send the bearer instead of PSK when `authenticated: true`. Do not send both.
+- PSK-only call (no `x-rh-identity`) → confirm the downstream accepts the bearer alone. `sources-api-go` requires `x-rh-identity` or PSK and ignores `Authorization`; unconfirmed → `Decision required`.
 - Record the SDK version and confirm `OAuth2ClientCredentials` is available from the installed package.
 - Record credential wiring and every independently deployed workload that can execute the call.
 - Missing credential wiring for a workload → packet gap, not an entry-gate failure.
-- A service ignoring `Authorization` is not a blocker. It may authenticate via `x-rh-identity`/PSK while the bearer authenticates the service to the cluster. Verified for `sources-api-go`: no bearer parsing on main; OIDC PR #962 closed unmerged.
+- A service ignoring `Authorization` is not a blocker when `x-rh-identity` is present: it can authenticate via identity while the bearer authenticates the service to the cluster. Verified for `sources-api-go`: no bearer parsing on main; OIDC PR #962 closed unmerged.
 - If `authenticated: true` requires any auth mechanism other than the Kessel SDK bearer → `Decision required`.
 
 Skip criteria, complete list: G1/G2 failure, `authenticated: false`, endpoint absent with no fallback.

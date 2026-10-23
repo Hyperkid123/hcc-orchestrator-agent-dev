@@ -46,8 +46,8 @@ Take names, environment, hostname, ports, TLS, and auth requirements from author
 
 ### Authentication
 
-- `authenticated: true` → every remote consumer adds the SDK-issued bearer alongside its existing credential. Never replace `x-rh-identity` or PSK.
-- `authenticated: false` → no bearer.
+- `authenticated: true` → keep `x-rh-identity` and add the bearer; replace PSK with the bearer.
+- `authenticated: false` → no bearer; keep current behavior.
 - Remote consumers follow the same auth rules as local consumers in `personas/clowder-v2/migration-common.md`.
 - `ClowdAppRef` provides no custom CA path. Remote certificates must be system-trusted.
 
