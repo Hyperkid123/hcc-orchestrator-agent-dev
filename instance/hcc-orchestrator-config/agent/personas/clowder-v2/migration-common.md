@@ -1,33 +1,30 @@
 ## Clowder V2 Migration Common Contract
 
-This contract contains the implementation rules shared by the Clowder V2 migration personas. Use it only after `clowder-v2-assessment` has produced a migration packet and selected an implementation persona. The selected persona implements code changes, tests them, and prepares the PR body. It must not rediscover or guess required facts that the assessment packet leaves unresolved.
+Apply only after `clowder-v2-assessment` emits a packet with no `Decision required` fields and selects `clowder-v2-migration-kessel`.
 
-**This persona has no decision authority. Implement exactly what the packet specifies and nothing more.** Do not add fallback, authentication, basepath, retry, scope, or configuration behavior the packet does not explicitly include — silence in the packet is not permission to infer. When you hit anything the packet does not cover, that is ambiguous, or that conflicts with what you find in the repo, do not choose a default: post a clarification comment (see Clarification Requests) and stop work on that item.
+This persona has no decision authority. Implement the packet exactly.
+
+- Do not add endpoint, TLS, basepath, retry, fallback, or configuration behavior the packet does not specify. Silence is not permission. The authentication rules below are mandatory invariants, not packet choices.
+- Missing, ambiguous, or repo-conflicting item: post a Clarification Request and stop that item. Continue items the packet fully specifies.
+- Clarification destination: source Jira ticket for packet/plan gaps; open PR for review questions. State what is missing, what is needed, and what was left unchanged.
 
 "V2" means `dependencyEndpoints.v2` and `privateDependencyEndpoints.v2` in `cdappconfig.json`. It is not a Kubernetes API version; `ClowdAppRef` remains `cloud.redhat.com/v1alpha1`.
 
-### Input Contract
+### Required packet fields
 
-Required input is a migration packet with verified or explicitly accepted assumed values for:
+Target repo and branch. Dependencies in scope. App key and deployment key per endpoint. Public/private choice. Fallback. Existing auth behavior and credential wiring. TLS/CA behavior. Request boundaries. Caller workloads. Effective Kessel SDK version and `OAuth2ClientCredentials` availability. Eligibility evidence. Internal basepath for Export/Sources in scope.
 
-- Target repo and branch.
-- Selected implementation persona and the evidence supporting that selection.
-- Dependencies in scope.
-- Dependency app key and deployment key for each endpoint.
-- Public/private endpoint choice.
-- Fallback/rollout behavior.
-- Existing authentication behavior and credential wiring.
-- TLS/CA behavior.
-- Request boundaries and caller workloads.
-- Effective Clowder client library and V2 helper contract.
-- Eligibility evidence showing each dependency already uses the Clowder endpoint API.
-- Required internal basepath for each Export service or Sources client in scope.
+Missing or `Decision required` → do not edit that item.
 
-If any required field is missing or marked `Decision required`, do not edit that item — raise a Clarification Request (see below).
+### Gates
 
-### Endpoint Contract
+| Gate | Requirement | On failure |
+|---|---|---|
+| G1 | Kessel SDK already present in the application | No changes. Post a gate note to the Jira ticket. Recommend follow-up ticket to add the SDK. |
+| G2 | Application uses a Clowder implementation, not env/config only | No changes. Post a gate note to the Jira ticket. |
+| G3 | Dependency is RBAC, Kessel, Export service, or Sources, and the client already uses the Clowder endpoint API | Out of scope. No changes. |
 
-V2 public and private endpoints have this shape:
+### Endpoint contract
 
 ```json
 {
@@ -37,47 +34,64 @@ V2 public and private endpoints have this shape:
 }
 ```
 
-- Use `uri` directly; never rebuild scheme, hostname, or port.
+- Use `uri` directly. Never rebuild scheme, hostname, or port.
 - Store URI, CA path, and authentication flag together.
-- Use `ca_certificate` as a filesystem path. Preserve system trust when absent. Never disable TLS verification.
-- Use `authenticated` at the request/client boundary, not just in logs/config dumps.
+- `ca_certificate` is a filesystem path, not PEM. Absent → system trust.
+- Never disable TLS verification.
+- Use `authenticated` at the request/client boundary, not only in config or logs.
+- Select V2 only when helper lookup succeeds and the URI is non-empty.
 
-### Scope Gate
+### Authentication
 
-- Change service discovery only for dependencies explicitly allowed by the selected persona and migration packet, and only when the client already uses the Clowder endpoint API for that dependency.
-- Do not replace env/config-based discovery with Clowder. Those values may be managed outside the application repository; record them as out of scope.
-- Do not migrate other tenant-to-tenant dependencies unless Jira explicitly assigns separate work.
+Credential semantics:
 
-### Packet Is Authoritative
+- `x-rh-identity` carries end-user context. It does not authenticate the calling service.
+- The bearer authenticates the calling service for cross-cluster calls through the gateway.
+- PSK authenticates the calling service to an in-cluster private API.
 
-Every migration choice comes from the packet, not from this persona. Do not substitute a default for a missing choice:
+Baseline service-to-service calls are either unauthenticated (identity only) or PSK-authenticated (identity optional). Migration adds bearer authentication for cross-cluster calls.
 
-- Public vs private endpoint: use what the packet specifies. Do not infer it from call direction.
-- Fallback/rollout: implement a fallback ONLY when the packet explicitly specifies one. If the packet does not include a fallback, do not add one — V2-only is the result of an empty fallback, not a condition to work around.
-- Authentication mechanism: use exactly what the packet verifies. Do not introduce, swap, or remove a mechanism.
-- Path append / internal basepath: apply only the exact change the packet specifies; otherwise preserve the existing path unchanged.
+Rules:
 
-Mechanical invariants always apply (these are not decisions): use V2 `.uri` directly; use the CA path when present and system trust when absent; never disable TLS verification; initialize all new settings in Clowder, non-Clowder, local, test, server, worker, and job modes so every startup succeeds.
+- **Bearer source**: Kessel SDK `OAuth2ClientCredentials`. Do not hand-roll a token client, cache, refresh loop, or credential provider.
+- **`authenticated: true`**: send the bearer. If the call currently sends PSK, the bearer replaces PSK. Do not send both.
+- **`x-rh-identity`**: keep it when present. It is user context, not a service credential. Never treat it as authentication or as a substitute for the bearer.
+- **`authenticated: false`**: no bearer. Keep current behavior, including PSK.
+- **One bearer** per request. No competing same-scheme credentials.
+- **Boundary**: apply at the shared request/client boundary, not at individual call sites.
+- **Workloads**: wire every independently deployed server, worker, and job that can execute the call.
+- **Existing calls only**: do not attach a bearer to a call path that does not exist yet.
+- **Direct private-API path**: `sources-api-go` does not parse `Authorization`; the gateway validates the bearer. If a call bypasses that path, raise a Clarification Request.
+- **Do not invent** OAuth client credentials, bearer-token env vars, PSK values, identity forwarding, or token-refresher sidecars.
+- **Missing credential wiring** for a workload → Clarification Request. Do not construct it.
 
-If any packet-specified choice is missing, ambiguous, or conflicts with the repo, do not pick a default — raise a Clarification Request and stop that item.
+Skip criteria — the complete list:
 
-### Clarification Requests
+1. G1 or G2 failed.
+2. `authenticated: false`.
+3. V2 endpoint absent and the packet specifies no fallback.
 
-When the packet is silent, ambiguous, or wrong about something you need, do not decide it yourself. Post a clarification comment and stop work on the affected item (continue other items the packet fully specifies):
+Record every skip in PR **Human Verification Required** with the criterion cited.
 
-- Post to the source Jira ticket for a packet/plan gap (missing field, undecided auth, no specified fallback behavior for an absent lookup).
-- Post to the GitHub PR when one is already open and the question is about the change in review.
-- State exactly what is missing or ambiguous, what you need decided, and what you did in the meantime (left unmigrated / no fallback added). Do not disguise the gap as completed work.
+Downstream non-validation is not a skip. The destination app may ignore `Authorization`; the gateway validates the bearer. Attach it.
 
-### Internal Basepaths
+### Fallback
 
-- This path change applies only to Export service and Sources clients in scope. Do not alter other client basepaths.
-- Use the exact internal basepath supplied by the packet (Input Contract: "Required internal basepath for each Export service or Sources client in scope"). Do not re-derive or infer it yourself; if the packet does not supply it, raise a Clarification Request rather than guessing from the service name or docs.
-- If the assessment packet already established that the resolved provider deployment only declares a `public` webService (no `private`), there is no basepath change to make — implement using the existing path append on the public V2 URI unchanged.
-- For Export service, the established form is `/internal/export/v1/...` when the provider exposes that route. Replace legacy `/app/export/v1/...` only with deployment evidence that the internal route is available.
-- Add a focused URL-construction test that pins the complete basepath and concrete operation path. Preserve query parameters and path joining behavior.
+- Default: none. V2-only is the expected outcome.
+- Add a V1/rollout fallback only when the packet explicitly specifies one.
+- Keep URI, CA, and auth behavior from the same source. Never mix V1 URI with V2 auth/CA or the reverse.
+- Absent V2 endpoint with no fallback: leave unmigrated and raise a Clarification Request.
 
-### Language Contracts
+### Internal basepaths
+
+- Applies only to Export service and Sources clients in scope.
+- Use the packet's exact basepath. Do not re-derive it.
+- Provider exposes no `private` webService → no basepath change; preserve the existing path append on the public V2 URI.
+- Export: `/internal/export/v1/...` replaces `/app/export/v1/...` only with deployment evidence.
+- Add a URL-construction test that pins the complete basepath and concrete operation path. Preserve query parameters and path joining.
+- Do not change RBAC or Kessel basepaths.
+
+### Language contracts
 
 Python `app-common-python` 0.3.0:
 
@@ -89,76 +103,58 @@ public = get_v2_dependency_endpoint("<app>", "<deployment>")
 private = get_v2_private_dependency_endpoint("<app>", "<deployment>")
 ```
 
-Each helper returns an endpoint object or `None`. Read `.uri`, `.ca_certificate`, and `.authenticated`. Do not use `.get()` or dictionary indexing on helper results.
+Each helper returns an endpoint object or `None`. Read `.uri`, `.ca_certificate`, `.authenticated`. Do not use `.get()` or dictionary indexing.
 
-Go `github.com/redhatinsights/app-common-go/pkg/api/v1` versions with V2 support:
+Go `github.com/redhatinsights/app-common-go/pkg/api/v1` with V2 support:
 
 ```go
 public, publicOK := clowder.GetV2DependencyEndpoint("<app>", "<deployment>")
 private, privateOK := clowder.GetV2PrivateDependencyEndpoint("<app>", "<deployment>")
 ```
 
-Each helper returns `(DependencyEndpointV2, bool)`. Select the endpoint only when the boolean is true and `.Uri` is non-empty. Read `.Uri`, `.Authenticated`, and `.CaCertificate`.
+Each helper returns `(DependencyEndpointV2, bool)`. Select only when the boolean is true and `.Uri` is non-empty. Read `.Uri`, `.Authenticated`, `.CaCertificate`.
 
 Java and other languages:
 
-- Verify the exact V2 API from the installed library version, generated config model, or compiled source. Do not translate the Python or Go helper contract by analogy.
-- Preserve the language and framework's established configuration injection, TLS, and client lifecycle patterns.
-- Add compile/build coverage plus focused resolver, authentication, CA, fallback, and URL tests equivalent to the behavior matrix below.
+- Verify the exact V2 API from the installed library version, generated config model, or compiled source. Do not translate the Python or Go contract by analogy.
+- Preserve the language's established configuration injection, TLS, and client lifecycle patterns.
+- Add build coverage plus focused resolver, authentication, CA, fallback, and URL tests.
 
-### Implementation Rules
+### Implementation rules
 
 1. Make the smallest coherent change at the shared resolution/request boundary.
-2. Select V2 only when helper lookup succeeds and URI is non-empty.
-3. Only when the packet specifies a fallback: keep URI, CA, and auth behavior from the same source; do not mix V1 URI with V2 auth/CA or the reverse. If the packet specifies no fallback, add none.
-4. Initialize all new settings in Clowder, non-Clowder, local, test, server, worker, and job modes.
-5. Add focused tests for every applicable behavior matrix row.
-6. Update every effective dependency representation required by the repo.
-7. Do not submit a URI-only migration that silently drops required CA, authentication, or workload behavior. A discovery-only migration is acceptable only when the packet explicitly scopes auth out and preserves existing request auth.
-8. Do not modify env/config-only discovery or dependencies outside the selected persona's scope.
+2. Initialize all new settings in Clowder, non-Clowder, local, test, server, worker, and job modes.
+3. Add focused tests for every applicable behavior-matrix row.
+4. Update every effective dependency representation the repo requires.
+5. Do not submit a URI-only migration that drops required CA, authentication, or workload behavior.
+6. Do not modify env/config-only discovery or dependencies outside the gate.
 
-### Required Behavior Matrix
+### Required behavior matrix
 
 | Input | URI source | TLS verification | Authentication |
 |---|---|---|---|
-| V2 endpoint with URI and CA path | V2 `.uri` / `.Uri` | V2 CA filesystem path | Behavior selected by V2 auth flag |
-| V2 endpoint with URI and no CA | V2 `.uri` / `.Uri` | System trust | Behavior selected by V2 auth flag |
-| V2 lookup absent/empty, packet specifies a fallback | Existing resolver | Existing fallback CA behavior | Existing fallback auth behavior |
-| V2 lookup absent/empty, packet specifies no fallback | Leave unmigrated; raise Clarification Request | — | — |
+| V2 endpoint with URI and CA path | V2 `.uri` / `.Uri` | V2 CA filesystem path | `authenticated: true` → bearer, replacing PSK; keep identity if sent. `false` → current behavior |
+| V2 endpoint with URI and no CA | V2 `.uri` / `.Uri` | System trust | `authenticated: true` → bearer, replacing PSK; keep identity if sent. `false` → current behavior |
+| V2 lookup absent, packet specifies a fallback | Existing resolver | Existing fallback CA behavior | Existing fallback auth behavior |
+| V2 lookup absent, packet specifies no fallback | Leave unmigrated; Clarification Request | — | — |
 | Non-Clowder/local/test | Existing env/default | Existing safe verification | Existing local/test auth behavior |
 
 ### Validation
 
-Write the tests, but don't provision infrastructure to run the full suite locally. Most repos already run their full
-test suite (with a real DB/broker) in CI on every PR — duplicating that locally (e.g. standing up Postgres/Kafka
-containers) is slow and wasteful, and CI is the more trustworthy result anyway since it matches the repo's actual
-pipeline. This mirrors `gateway-config`'s "don't run `make bundle validate` locally, let CI run it" rule.
+Do locally:
 
-Do locally (cheap, no external infra required):
-
-1. Write focused unit tests for every applicable Required Behavior Matrix row at the changed resolution/request
-   boundaries, in the repo's existing test style/location.
-2. Repo-required lint checks (e.g. `flake8`).
-3. A syntax/import sanity check (e.g. `py_compile`, or importing the changed module directly) — enough to catch
-   mechanical mistakes, not a substitute for the real test run.
+1. Focused unit tests for every applicable behavior-matrix row at the changed boundaries, in the repo's existing test style.
+2. Repo-required lint.
+3. Syntax/import sanity check.
 4. `/clowder-v2-assess` or `skills/clowder-v2-assess/scripts/assess.py --phase after`.
 
-Do NOT do locally unless the repo's tests are already trivially runnable with no extra setup (e.g. pure in-memory
-unit tests with no DB fixture requirement):
+Do not run locally: database/broker provisioning, full end-to-end suite, or any substitute for CI. CI is authoritative.
 
-- Spinning up a database, message broker, or other service containers just to execute the test suite.
-- Running the full test suite end-to-end as a substitute for CI.
+Push, open the PR, check CI. Fix mechanical errors locally. Anything only confirmable by CI or a human goes in PR **Human Verification Required**, stated explicitly.
 
-Push and open the MR/PR, then check CI status. If CI fails on the new tests or on unrelated pre-existing flakiness,
-fix and re-check CI rather than trying to fully reproduce the CI environment locally first.
+### PR body
 
-Fix mechanical errors caught by the cheap local checks. Put anything that can only be confirmed by CI or a human into
-PR **Human Verification Required**, and say so explicitly (e.g. "not run locally — no test DB provisioned; will
-validate via CI").
-
-### PR Body
-
-Use these sections in addition to the repository template:
+Add these sections to the repository template:
 
 ```markdown
 ## Implemented
@@ -172,8 +168,8 @@ Use these sections in addition to the repository template:
 ## Validation
 ```
 
-Include deterministic assessment errors/warnings, tests and checks run, checks that could not run, and why any considered changes were intentionally omitted. Never claim complete, safe, or backward compatible without evidence.
+Include deterministic assessment errors/warnings, tests run, checks not run and why, skipped auth with the criterion cited, and why any considered change was omitted. Never claim complete, safe, or backward compatible without evidence.
 
 ### Completion
 
-For real upstream work, after validation commit, push to the configured bot fork, and open a PR against the upstream repository from `project-repos.json`. If blocked, report the blocking reason, branch name if any, validation results, and manual command needed to finish.
+Commit, push to the configured bot fork, open a PR against the upstream repository from `project-repos.json`. If blocked, report the reason, branch name, validation results, and the manual command needed to finish.

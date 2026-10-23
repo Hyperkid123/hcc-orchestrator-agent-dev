@@ -15,6 +15,15 @@ of dependencies and depends on network reachability this bot may not have.
 | Kessel Inventory | — | — | — | — | — | No known consumer currently reaches Kessel Inventory through the Clowder endpoint API (env-var `KESSEL_URL` discovery is the observed pattern instead) — nothing to record yet. When a consumer's assessment finds Kessel accessed via `get_v2_dependency_endpoint`, verify its ClowdApp and add a row here. | — | — |
 | Export service | — | — | — | — | — | No known consumer inspected yet. Verify and add a row here the first time a real assessment finds an eligible Export service client. | — | — |
 
+## Downstream auth (verified)
+
+| Dependency | Service authentication | End-user context | Evidence |
+|---|---|---|---|
+| Sources | `x-rh-sources-psk`; certificate-based identity | `x-rh-identity` | `sources-api-go` main `59837a7`, `middleware/authorization.go` and `middleware/headers.go` (2026-10-22). Does not parse `Authorization`; the gateway validates the bearer. |
+
+Do not infer another service's acceptance from this row. A bearer is still attached for
+`authenticated: true`; see `personas/clowder-v2/migration-common.md`.
+
 ## How to use this during assessment
 
 1. Confirm the app key from the consumer's own existing lookup (legacy `LoadedConfig.endpoints` key, or an existing

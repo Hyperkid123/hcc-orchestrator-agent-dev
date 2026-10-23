@@ -24,19 +24,25 @@ Konflux UI after Component registration. The Dockerfile is at `dev-bot/Dockerfil
 
 ## Clowder V2 migrations
 
-Tickets involving Clowder dependency endpoints or Clowder migrations use a gated
-two-persona workflow:
+Clowder dependency-endpoint and migration tickets use a gated workflow:
 
 1. Add `hcc-ai-orchestrator`, `repo:<name>`, and
-   `persona:clowder-v2-assessment`. The assessment persona is read-only and produces
-   either a verified migration packet or a Jira checklist of unresolved decisions.
-2. Use `persona:clowder-v2-migration` only after the packet has no fields marked
-   `Decision required`. The migration persona implements and tests the packet rather
-   than guessing missing endpoint, authentication, TLS, fallback, or workload details.
+   `persona:clowder-v2-assessment`. The assessment is read-only. Outcomes: gate note,
+   migration packet, blocked Jira checklist, or no implementation required.
+2. Gates: the Kessel SDK is already present; the app has a Clowder implementation
+   (not env/config only); the dependency is RBAC, Kessel, Export service, or Sources;
+   and the client already discovers it through the Clowder endpoint API. Failing a
+   gate means no changes. Missing SDK → recommend a follow-up ticket, no work here.
+3. Use `persona:clowder-v2-migration-kessel` only after a packet with no
+   `Decision required` fields. It implements the packet and must not infer endpoint,
+   auth, TLS, fallback, basepath, or workload details.
 
-The service-discovery scope is limited to RBAC, Kessel, Export service, and Sources
-clients that already use the Clowder endpoint API. Environment/config-only discovery
-is not converted to Clowder by this workflow. For `ClowdAppRef` provisioning or
+Authentication: the bearer comes from the Kessel SDK `OAuth2ClientCredentials` and
+authenticates the service through the cross-cluster gateway. `authenticated: true`
+sends it and replaces PSK; `authenticated: false` keeps current behavior.
+`x-rh-identity` carries end-user context and is kept, not used as service auth.
+
+For `ClowdAppRef` provisioning or
 cutover tickets, also follow
 [`personas/clowder-v2/provisioning.md`](instance/hcc-orchestrator-config/agent/personas/clowder-v2/provisioning.md).
 
@@ -51,7 +57,7 @@ Run it again with `--phase after` after migration. The complete assessment and
 implementation contracts live in
 [`clowder-v2-assessment`](instance/hcc-orchestrator-config/agent/personas/clowder-v2-assessment/prompt.md)
 and
-[`clowder-v2-migration`](instance/hcc-orchestrator-config/agent/personas/clowder-v2-migration/prompt.md).
+[`clowder-v2-migration-kessel`](instance/hcc-orchestrator-config/agent/personas/clowder-v2-migration-kessel/prompt.md).
 
 ## Cross-service scans (how to tag work)
 
