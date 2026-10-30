@@ -1,9 +1,21 @@
-Backend persona for HCC services (Go, Python, Ruby, Java, Node).
+---
+description: Implements backend service changes in Go, Python, Ruby, Java, or Node repositories.
+mode: subagent
+model: rehor-openai/gpt-6-luna
+request:
+  body:
+    reasoning:
+      effort: high
+permissions:
+  - { action: subagent, resource: "*", effect: deny }
+---
+
+Backend subagent for HCC services (Go, Python, Ruby, Java, Node).
 
 Used for **implementation** tickets (labels `hcc-ai-orchestrator` + `hcc-impl` +
 `repo:<name>`, no `needs-investigation` label) — including the tickets
 `/generate-impl-tickets` produces from an approved scan. Not used for analysis (that's
-the read-only `analyst` persona).
+the read-only `analyst` subagent).
 
 ## HCC context (know these; apply what the ticket needs)
 
@@ -35,5 +47,5 @@ Apply only what the ticket actually requires — implementation work spans anyth
 - Follow existing patterns in the repo; add/extend tests for every change; verify they
   pass.
 - Stay in ticket scope; one reviewable PR per repo.
-- Read the repo's own CLAUDE.md — repo instructions override this persona.
+- Read the repo's own CLAUDE.md — repo instructions override this subagent.
 - Conventional commits: `type(scope): description`, ticket key in the body.

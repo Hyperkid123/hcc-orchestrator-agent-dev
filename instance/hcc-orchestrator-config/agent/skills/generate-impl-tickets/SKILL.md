@@ -75,7 +75,7 @@ The created tickets are ordinary jira-kanban work items:
 - Carry `hcc-ai-orchestrator` (pickup) but NO `needs-investigation` label -> the
   workflow's normal implement path picks them up.
 - The persona is auto-selected by the target repo's tech stack (Go/Python ->
-  backend, React/PatternFly -> frontend), per the instance CLAUDE.md routing.
+  backend, React/PatternFly -> frontend), per the instance AGENTS.md routing.
 - They can be worked by this instance or handed to another bot; the `repo:` label +
   acceptance criteria are all a downstream implement loop needs.
 

@@ -5,8 +5,13 @@ metadata:
 parameters:
 - name: NAMESPACE
   value: ${NAMESPACE}
+- name: REGISTRY_IMG
+  value: quay.io/redhat-services-prod/hcc-platex-services/hcc-orchestrator-agent-dev
+- name: IMAGE_DIGEST
+  required: true
+# BOT_IMAGE/IMAGE_TAG kept for compatibility; the pod spec pins by digest.
 - name: BOT_IMAGE
-  value: quay.io/redhat-services-prod/REPLACE-WITH-KONFLUX-TENANT/hcc-orchestrator-agent-dev
+  value: quay.io/redhat-services-prod/hcc-platex-services/hcc-orchestrator-agent-dev
 - name: IMAGE_TAG
   required: true
 - name: BOT_LABEL
@@ -25,6 +30,18 @@ parameters:
   value: devbot-hcc-orchestrator
 - name: BOT_CONFIG_PATH
   value: ""
+- name: BOT_EXECUTION_ENGINE
+  value: python
+- name: REHOR_OPENCODE_DEPLOYMENT_CONFIG
+  value: ""
+- name: REHOR_OPENCODE_MAX_TOOL_CALLS
+  value: ""
+- name: REHOR_MODEL_PROXY_URL
+  value: ""
+- name: REHOR_MODEL_PROXY_TOKEN
+  value: ""
+- name: REHOR_WORKSPACE_OWNER_UID
+  value: "1000"
 - name: GCP_PROJECT_ID
   required: true
 - name: GCP_REGION
@@ -35,6 +52,12 @@ parameters:
   value: ""
 - name: SLACK_NOTIFY_MODE
   value: ""
+- name: KEDA_TIMEZONE
+  value: "Europe/Prague"
+- name: KEDA_CRON_START
+  value: "0 9 * * 1-5"
+- name: KEDA_CRON_END
+  value: "0 23 * * 1-5"
 - name: BOT_CPU_REQUEST
   value: "250m"
 - name: BOT_MEMORY_REQUEST
@@ -45,13 +68,33 @@ parameters:
   value: "6Gi"
 objects:
 
-# Bot-only deployment for hcc-orchestrator-agent-dev runner instance.
-# Shared infrastructure (proxy, memory-server, secrets) deployed by
-# platform-frontend-ai-dev template in the same namespace.
+# ============================================================================
+# OpenShell deployment for hcc-orchestrator-agent-dev runner instance.
+#
+# Bot workloads run as an OpenShell SandboxTemplate + SandboxWarmPool instead
+# of a plain Deployment (RHCLOUD-50068). The agent-sandbox controller enforces
+# the filesystem boundary (read-only rootfs, writable /home/botuser/repos,
+# /home/botuser/data, /tmp) — see OpenShift-Fleet/rehor docs/openshell-deployment.md
+# and presets/core/CLAUDE.md "OpenShell Filesystem Access".
+#
+# Shared infrastructure (proxy, memory-server, secrets) is deployed by
+# the platform-frontend-ai-dev template in the same namespace.
+# This template creates:
+#   1. SandboxTemplate (pod blueprint + managed NetworkPolicy)
+#   2. SandboxWarmPool  (name controlled by BOT_NAME parameter)
+#   3. ScaledObject     (KEDA cron scaler targeting the SandboxWarmPool)
+#   4. NetworkPolicy    (ingress, allows Prometheus to scrape bot metrics)
+#
+# Prerequisites (deployed by platform-frontend-ai-dev):
+#   - devbot-proxy       (ports 3128, 9090, 8443, 8444, 8446, 8450)
+#   - devbot-memory-server (port 8080)
+#   - devbot-secrets     (Vault secret with git identity + credentials)
+#   - OpenShell gateway + agent-sandbox controller + KEDA installed in namespace
+# ============================================================================
 
-# --- Bot Deployment ---
-- apiVersion: apps/v1
-  kind: Deployment
+# --- SandboxTemplate: pod blueprint + managed NetworkPolicy ---
+- apiVersion: extensions.agents.x-k8s.io/v1beta1
+  kind: SandboxTemplate
   metadata:
     name: ${BOT_NAME}
     labels:
@@ -59,11 +102,52 @@ objects:
       app.kubernetes.io/component: bot
       app.kubernetes.io/part-of: devbot
   spec:
-    replicas: ${{BOT_REPLICAS}}
-    selector:
-      matchLabels:
-        app.kubernetes.io/name: ${BOT_NAME}
-    template:
+    networkPolicyManagement: Managed
+    networkPolicy:
+      ingress:
+      - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: agent-sandbox-system
+          podSelector:
+            matchLabels:
+              app: sandbox-router
+      egress:
+      - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: devbot-proxy
+        ports:
+        - port: 3128
+          protocol: TCP
+        - port: 9090
+          protocol: TCP
+        - port: 8443
+          protocol: TCP
+        - port: 8444
+          protocol: TCP
+        - port: 8446
+          protocol: TCP
+        # OpenAI-compatible model gateway (coordinator/OpenCode runners)
+        - port: 8450
+          protocol: TCP
+      - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: memory-server
+        ports:
+        - port: 8080
+          protocol: TCP
+      - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-dns
+        ports:
+        - port: 5353
+          protocol: UDP
+        - port: 5353
+          protocol: TCP
+    podTemplate:
       metadata:
         labels:
           app.kubernetes.io/name: ${BOT_NAME}
@@ -72,7 +156,7 @@ objects:
       spec:
         containers:
         - name: bot
-          image: ${BOT_IMAGE}:${IMAGE_TAG}
+          image: ${REGISTRY_IMG}@${IMAGE_DIGEST}
           securityContext:
             runAsNonRoot: true
             allowPrivilegeEscalation: false
@@ -93,18 +177,12 @@ objects:
             value: http://devbot-memory-server:8080/health
           - name: BOT_MEMORY_HEALTH_TIMEOUT
             value: "120"
-          - name: CLAUDE_CODE_SKIP_VERTEX_AUTH
-            value: "true"
-          - name: ANTHROPIC_VERTEX_BASE_URL
-            value: http://devbot-proxy:8443
-          - name: ANTHROPIC_VERTEX_PROJECT_ID
-            value: dummy-project
-          - name: CLOUD_ML_REGION
-            value: global
+          # Executor — thin client connects to proxy over TCP
           - name: EXECUTOR_ADDR
             value: devbot-proxy:9090
           - name: HUSKY
             value: "0"
+          # Git identity — per-platform (from shared Vault secret)
           - name: GH_USER_NAME
             valueFrom:
               secretKeyRef:
@@ -125,11 +203,13 @@ objects:
               secretKeyRef:
                 name: devbot-secrets
                 key: bot-gl-email
+          # Jira identity (from shared Vault secret)
           - name: BOT_JIRA_EMAIL
             valueFrom:
               secretKeyRef:
                 name: devbot-secrets
                 key: jira-email
+          # Secrets that stay in bot container (SSO for E2E)
           - name: SSO_USERNAME
             valueFrom:
               secretKeyRef:
@@ -140,6 +220,7 @@ objects:
               secretKeyRef:
                 name: devbot-secrets
                 key: e2e-password
+          # Bot config
           - name: BOT_BOARD_NAME
             value: ${BOT_BOARD_NAME}
           - name: BOT_JIRA_PROJECT
@@ -150,14 +231,32 @@ objects:
             value: ${BOT_CONFIG_REPO}
           - name: BOT_CONFIG_PATH
             value: ${BOT_CONFIG_PATH}
+          - name: CYCLE_RUNS_API_URL
+            value: http://devbot-memory-server:8080/api/cycle-runs
+          # OpenCode V2 (coordinator engine) — model gateway + deployment config
+          - name: BOT_EXECUTION_ENGINE
+            value: ${BOT_EXECUTION_ENGINE}
+          - name: REHOR_OPENCODE_DEPLOYMENT_CONFIG
+            value: ${REHOR_OPENCODE_DEPLOYMENT_CONFIG}
+          - name: REHOR_OPENCODE_MAX_TOOL_CALLS
+            value: ${REHOR_OPENCODE_MAX_TOOL_CALLS}
+          - name: REHOR_MODEL_PROXY_URL
+            value: ${REHOR_MODEL_PROXY_URL}
+          # Non-secret client placeholder; proxy injects the upstream API key.
+          - name: REHOR_MODEL_PROXY_TOKEN
+            value: ${REHOR_MODEL_PROXY_TOKEN}
+          - name: REHOR_WORKSPACE_OWNER_UID
+            value: ${REHOR_WORKSPACE_OWNER_UID}
           - name: BOT_DASHBOARD_URL
             value: http://devbot-memory-server:8080/api/bot-status
           - name: COSTS_API_URL
             value: http://devbot-memory-server:8080/api/costs
+          # Slack notifications
           - name: SLACK_WEBHOOK_URL
             value: ${SLACK_WEBHOOK_URL}
           - name: SLACK_NOTIFY_MODE
             value: ${SLACK_NOTIFY_MODE}
+          # Proxy — shared pod deployed by platform-frontend-ai-dev
           - name: PROXY_HOST
             value: devbot-proxy
           - name: HTTP_PROXY
@@ -172,8 +271,10 @@ objects:
             value: devbot-memory-server,devbot-proxy,localhost,127.0.0.1
           - name: no_proxy
             value: devbot-memory-server,devbot-proxy,localhost,127.0.0.1
+          # Jira — proxied through proxy container (mcp-atlassian on port 8444)
           - name: JIRA_MCP_URL
             value: http://devbot-proxy:8444/mcp
+          # GH release upload — proxied through proxy container (port 8446)
           - name: GH_RELEASE_UPLOAD_URL
             value: http://devbot-proxy:8446/upload
           resources:
@@ -185,56 +286,24 @@ objects:
               cpu: "${BOT_CPU_LIMIT}"
               memory: "${BOT_MEMORY_LIMIT}"
               ephemeral-storage: 8Gi
+          volumeMounts:
+          - name: tmp
+            mountPath: /tmp
+          - name: repos
+            mountPath: /home/botuser/repos
+          - name: data
+            mountPath: /home/botuser/data
+        volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: repos
+          emptyDir: {}
+        - name: data
+          emptyDir: {}
 
-# --- NetworkPolicy: Bot can only reach proxy + memory-server ---
-- apiVersion: networking.k8s.io/v1
-  kind: NetworkPolicy
-  metadata:
-    name: ${BOT_NAME}-egress
-    labels:
-      app.kubernetes.io/part-of: devbot
-  spec:
-    podSelector:
-      matchLabels:
-        app.kubernetes.io/name: ${BOT_NAME}
-    policyTypes:
-    - Egress
-    egress:
-    - to:
-      - podSelector:
-          matchLabels:
-            app.kubernetes.io/name: devbot-proxy
-      ports:
-      - port: 3128
-        protocol: TCP
-      - port: 9090
-        protocol: TCP
-      - port: 8443
-        protocol: TCP
-      - port: 8444
-        protocol: TCP
-      - port: 8446
-        protocol: TCP
-    - to:
-      - podSelector:
-          matchLabels:
-            app.kubernetes.io/name: memory-server
-      ports:
-      - port: 8080
-        protocol: TCP
-    - to:
-      - namespaceSelector:
-          matchLabels:
-            kubernetes.io/metadata.name: openshift-dns
-      ports:
-      - port: 5353
-        protocol: UDP
-      - port: 5353
-        protocol: TCP
-
-# --- Bot Service (metrics only) ---
-- apiVersion: v1
-  kind: Service
+# --- SandboxWarmPool: KEDA scales this, not a Deployment ---
+- apiVersion: extensions.agents.x-k8s.io/v1beta1
+  kind: SandboxWarmPool
   metadata:
     name: ${BOT_NAME}
     labels:
@@ -242,20 +311,40 @@ objects:
       app.kubernetes.io/component: bot
       app.kubernetes.io/part-of: devbot
   spec:
-    type: ClusterIP
-    selector:
-      app.kubernetes.io/name: ${BOT_NAME}
-    ports:
-    - port: 9091
-      targetPort: metrics
-      protocol: TCP
-      name: metrics
+    replicas: ${{BOT_REPLICAS}}
+    sandboxTemplateRef:
+      name: ${BOT_NAME}
 
-# --- NetworkPolicy: Bot metrics accept ingress from monitoring ---
+# --- KEDA Cron Scaler ---
+# Override KEDA_TIMEZONE, KEDA_CRON_START, KEDA_CRON_END per deployment
+# target in the app-interface SaaS file.
+- apiVersion: keda.sh/v1alpha1
+  kind: ScaledObject
+  metadata:
+    name: ${BOT_NAME}-cron-scaler
+    labels:
+      app.kubernetes.io/name: ${BOT_NAME}
+      app.kubernetes.io/part-of: devbot
+  spec:
+    scaleTargetRef:
+      apiVersion: extensions.agents.x-k8s.io/v1beta1
+      kind: SandboxWarmPool
+      name: ${BOT_NAME}
+    minReplicaCount: 0
+    maxReplicaCount: 1
+    triggers:
+    - type: cron
+      metadata:
+        timezone: ${KEDA_TIMEZONE}
+        start: ${KEDA_CRON_START}
+        end: ${KEDA_CRON_END}
+        desiredReplicas: "1"
+
+# --- NetworkPolicy: Allow Prometheus to scrape bot metrics ---
 - apiVersion: networking.k8s.io/v1
   kind: NetworkPolicy
   metadata:
-    name: ${BOT_NAME}-ingress
+    name: ${BOT_NAME}-metrics-ingress
     labels:
       app.kubernetes.io/part-of: devbot
   spec:
@@ -272,26 +361,3 @@ objects:
       ports:
       - port: 9091
         protocol: TCP
-
-# --- Cron Scaler ---
-- apiVersion: keda.sh/v1alpha1
-  kind: ScaledObject
-  metadata:
-    name: ${BOT_NAME}-cron-scaler
-    labels:
-      app.kubernetes.io/name: ${BOT_NAME}
-      app.kubernetes.io/part-of: devbot
-  spec:
-    scaleTargetRef:
-      apiVersion: apps/v1
-      kind: Deployment
-      name: ${BOT_NAME}
-    minReplicaCount: 0
-    maxReplicaCount: 1
-    triggers:
-    - type: cron
-      metadata:
-        timezone: "America/New_York"
-        start: "0 9 * * 1-5"
-        end: "0 18 * * 1-5"
-        desiredReplicas: "1"

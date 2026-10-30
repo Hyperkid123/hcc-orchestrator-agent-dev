@@ -1,3 +1,15 @@
+---
+description: Read-only Clowder V2 assessment; emits a migration packet or a gate note, never edits code.
+mode: subagent
+model: rehor-openai/gpt-6-luna
+request:
+  body:
+    reasoning:
+      effort: high
+permissions:
+  - { action: subagent, resource: "*", effect: deny }
+---
+
 ## Clowder V2 Assessment
 
 Read-only. Do not edit code, dependencies, manifests, or tests.
@@ -105,10 +117,10 @@ Skip criteria, complete list: G1/G2 failure, `authenticated: false`, endpoint ab
 1. Run `/clowder-v2-assess` or `skills/clowder-v2-assess/scripts/assess.py --phase before`.
 2. Classify the ticket: consumer migration, `ClowdAppRef` provisioning/cutover, or end-to-end. For provisioning, also read `personas/clowder-v2/provisioning.md`.
 3. Inventory RBAC, Kessel, Export service, Sources. Mark each `Eligible` or `Out of scope`.
-4. Select exactly one persona:
+4. Select exactly one subagent:
    - Eligible work and Kessel SDK present → `clowder-v2-migration-kessel`.
-   - G1 or G2 fails → no persona. Post a gate note to the Jira ticket. For G1, recommend a follow-up ticket to add the SDK.
-   - No eligible dependency → no persona. `No implementation required`.
+   - G1 or G2 fails → no subagent. Post a gate note to the Jira ticket. For G1, recommend a follow-up ticket to add the SDK.
+   - No eligible dependency → no subagent. `No implementation required`.
 5. For each eligible dependency record: app key, deployment key, public/private, current discovery mechanism, fallback, request paths and shared boundary, credential set per call (identity, PSK, neither), existing auth, credential wiring, TLS/CA today and expected, and every workload that executes the call.
 6. Verify the effective Kessel SDK version and exact V2 helper contract from installed source, lockfiles, vendor tree, or a live import.
 7. For Export service and Sources clients, verify the internal basepath from `references/ewgw-internal-api-basepath.md`, the provider's current routes, and focused URL tests. Provider exposes only `public` → no basepath change. Only Export service and Sources.

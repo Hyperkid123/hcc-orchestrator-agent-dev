@@ -1,9 +1,12 @@
 # hcc-orchestrator-agent-dev — Additional Instructions
 
+OpenCode-native profile instructions (the legacy `CLAUDE.md` was removed with the
+Claude runtime; git history preserves it for rollback).
+
 ## Tool-call narration
 
 Keep the runner's Ultra Caveman output policy. Apply these additional rules across
-all personas and skills:
+all subagents and skills:
 
 - Call tools directly. After a result, make the next tool call without commentary.
   Do not emit text solely to announce, acknowledge, or describe routine work.
@@ -59,22 +62,22 @@ all personas and skills:
 ## Detected Tech Stacks
 - **hcc-orchestrator**: envs=[], personas=[analyst, backend, frontend]
 
-## Persona routing
+## Subagent routing
 
 `hcc-ai-orchestrator` is the bot pickup label (`BOT_LABEL`) — every ticket the bot
 works carries it. The labels below select what to *do* with a picked-up ticket, and
-persona choice overrides the default tech-stack auto-detection:
+subagent choice overrides the default tech-stack auto-detection:
 
-1. **`hcc-scan` label (a scan-coordinator epic) → run a scan *skill*, not a persona.**
+1. **`hcc-scan` label (a scan-coordinator epic) → run a scan *skill*, not a subagent.**
    - epic also has **`scan-aggregate`** → `/aggregate-scan`: post/refresh the
      epic-level summary from the children, then **remove the `scan-aggregate` label**
      so it does not re-aggregate on every subsequent pickup.
    - else → `/plan-scan` (additive — creates only the analysis children that do not
      exist yet, so re-picking-up an epic to widen its scope is safe).
-2. **`needs-investigation` + `scan:<epic>` label → `analyst` persona (READ-ONLY).**
+2. **`needs-investigation` + `scan:<epic>` label → `analyst` subagent (READ-ONLY).**
    Never modify a target repo, never push, never open a PR. Work via `/scan-service`.
    See below.
-3. **`persona:<name>` label → that persona**, if present (explicit override).
+3. **`persona:<name>` label → that subagent**, if present (explicit override).
 4. **Otherwise → auto-detect by the target repo's tech stack** (Go/Python/Ruby/Java
    → `backend`; React/PatternFly → `frontend`).
 
@@ -95,7 +98,7 @@ carries `hcc-ai-orchestrator` (the bot pickup label).
    from `/service-registry` and creates one read-only analysis child per service
    (`needs-investigation` + `repo:<name>` + `scan:<epic-key>`), linked to the epic.
 2. **Analyze** — each analysis child is worked one-per-cycle by the `analyst`
-   persona via `/scan-service`: read-only audit → per-service Jira comment (verdict +
+   subagent via `/scan-service`: read-only audit → per-service Jira comment (verdict +
    file:line evidence + checklist) → `memory_store` → `metadata.findings` on the task.
 3. **Aggregate** — this stage is **human-triggered**: when the analyses look done, a
    human adds the **`scan-aggregate`** label to the epic and moves it back into the
@@ -134,7 +137,7 @@ or `feedback_addressed` out of top-level `metadata.last_step` when completed no-
 must remain comment-watchable.
 
 Read-only enforcement for analysis: the `scan-service` skill's `allowed-tools`
-exclude `Edit`/`Write`/push/PR, and the `analyst` persona forbids mutation. A
+exclude `Edit`/`Write`/push/PR, and the `analyst` subagent forbids mutation. A
 hard runtime guarantee (a PreToolUse deny-hook) is a framework-level ask — the
 config-only instance cannot currently ship one (see `docs/scan-workflow.md`).
 
@@ -142,3 +145,15 @@ config-only instance cannot currently ship one (see `docs/scan-workflow.md`).
 
 <!-- Fill in team-specific conventions after scaffolding -->
 <!-- Examples: version managers, test commands, PR review norms -->
+
+## OpenCode
+
+This profile uses native subagents in `.opencode/agents/` instead of a persona
+directory per role. The shared workflow guidance may still refer to
+`personas/<name>/prompt.md`; map those role names to the matching native subagents
+and do not search for the deleted persona files. Exception:
+`personas/clowder-v2/` reference files still exist in this profile and are
+referenced by the clowder agents.
+
+OpenCode V2 does not expose the legacy LSP tool. Use each repository's
+typecheck, lint, and test commands instead.

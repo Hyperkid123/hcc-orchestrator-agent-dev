@@ -1,6 +1,18 @@
+---
+description: Implements Clowder V2 migrations with the Kessel SDK after an approved assessment packet.
+mode: subagent
+model: rehor-openai/gpt-6-luna
+request:
+  body:
+    reasoning:
+      effort: high
+permissions:
+  - { action: subagent, resource: "*", effect: deny }
+---
+
 ## Clowder V2 Migration
 
-Use only after `clowder-v2-assessment` emits a migration packet that selects `clowder-v2-migration-kessel`. Read `personas/clowder-v2/migration-common.md` in full before editing.
+Use only after `clowder-v2-assessment` emits a migration packet that selects `clowder-v2-migration-kessel`. Read `personas/clowder-v2/migration-common.md` in full before editing. For ref provisioning or cutover, also read `personas/clowder-v2/provisioning.md`.
 
 ### Gate
 
@@ -12,7 +24,7 @@ Before any edit, confirm from the repository:
 
 If the SDK is absent: make no changes. Post a gate note to the Jira ticket and recommend a follow-up ticket to add the SDK.
 
-If the packet selects this persona but the repository lacks the verified integration, or the installed API or credential wiring differs from the packet: raise a Clarification Request and stop the affected item.
+If the packet selects this subagent but the repository lacks the verified integration, or the installed API or credential wiring differs from the packet: raise a Clarification Request and stop the affected item.
 
 ### Hard limits
 

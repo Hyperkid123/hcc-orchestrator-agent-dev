@@ -1,9 +1,12 @@
 workflow: jira-kanban
 source: jira
+# OpenCode V2/OpenAI profile. Removing these selectors restores Python/Claude
+# runtime defaults; native subagents and MCP settings apply only to OpenCode.
+runtime: opencode
+provider: rehor-openai
+model: gpt-6-luna
 envs:
   - node
   - go
   - browser
   - patternfly-mcp
-claude_md:
-  strategy: append
