@@ -1,7 +1,7 @@
 ---
 description: Read-only Clowder V2 assessment; emits a migration packet or a gate note, never edits code.
 mode: subagent
-model: rehor-openai/gpt-6-luna
+model: rehor-openai/gpt-6.1-terra
 request:
   body:
     reasoning:

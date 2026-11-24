@@ -1,7 +1,7 @@
 ---
 description: Implements Clowder V2 migrations with the Kessel SDK after an approved assessment packet.
 mode: subagent
-model: rehor-openai/gpt-6-luna
+model: rehor-openai/gpt-6.1-terra
 request:
   body:
     reasoning:
