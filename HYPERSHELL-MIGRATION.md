@@ -22,18 +22,21 @@ and app-interface registration are untouched.
   (Mon–Fri 09:00–23:00 Europe/Prague). Source of the live values: the
   app-interface SaaS file `hcc-orchestrator-agent-dev-deploy.yml` parameters
   plus the legacy template defaults.
-- `dev-bot` gitlink moves `d975996` → `394edfd` → `6b4f296` (top-level profile
-  `env` support, dispatcher profile discovery with required `image`, registered
-  TypeScript preflights, KEDA-style schedule evaluation — the `a113ed3`
-  state proposed by open konflux PR #27 — plus the merged rehor PR #678
-  fixes: the deployment-provided Jira bot identity as the default for the
-  shared sprint/kanban preflights, and the browser preset screenshot upload
-  helper wired to the service gateway — and the merged rehor PR #679 change:
-  the profile's approved non-secret `env` reaches the registered TypeScript
-  preflights as one read-only `instanceEnv` unit). `6b4f296` is the merge of
-  rehor PR #679 on `master` and strictly contains `394edfd` (rehor #678) and
-  `a113ed3` (rehor #674), so konflux PR #27 can land before or after this
-  draft.
+- `dev-bot` gitlink moves `d975996` → `394edfd` → `6b4f296` → `f23332e`
+  (top-level profile `env` support, dispatcher profile discovery with required
+  `image`, registered TypeScript preflights, KEDA-style schedule evaluation —
+  the `a113ed3` state proposed by open konflux PR #27 — plus the merged rehor
+  PR #678 fixes: the deployment-provided Jira bot identity as the default for
+  the shared sprint/kanban preflights, and the browser preset screenshot
+  upload helper wired to the service gateway — the merged rehor PR #679
+  change: the profile's approved non-secret `env` reaches the registered
+  TypeScript preflights as one read-only `instanceEnv` unit — and the current
+  `master` tip `f23332e`, which adds rehor #680 (more registered TypeScript
+  preflights), #681 (tier-2 sandbox secret rendering), #682 (runner identity
+  header encoding fix), #683 (Grype Brotli fix), and #688 (sandbox env
+  delivery)). `f23332e` is the current rehor `master` tip and strictly
+  contains `6b4f296` (rehor #679), `394edfd` (rehor #678), and `a113ed3`
+  (rehor #674), so konflux PR #27 can land before or after this draft.
 - Model tiering on the existing native roles (no roles added, no prompts
   duplicated, permissions untouched):
   - `orchestrator-coordinator` stays `rehor-openai/gpt-6.1-sol` (coordination).
@@ -51,9 +54,10 @@ and app-interface registration are untouched.
 ## Gates before cutover
 
 1. Rehor core: rehor PR #678 (bot-assigned Jira intake, sandbox screenshot
-   uploads) is merged as `394edfd`, and rehor PR #679 (instance env to
-   preflights as one unit) is merged as `6b4f296`, the current pin. Still
-   required: deploy a dispatcher image built from `6b4f296`+ and rebuild and
+   uploads) is merged as `394edfd`, rehor PR #679 (instance env to preflights
+   as one unit) is merged as `6b4f296`, and the pin now sits at `f23332e`,
+   the current rehor `master` tip. Still required: deploy a dispatcher image
+   built from `f23332e`+ and rebuild and
    promote this repository's runner image from the same revision with the
    OpenCode V2 closure, then pin the exact digest instead of the `latest`
    placeholder. A green Konflux build is not by itself proof of a deployed
@@ -74,7 +78,7 @@ and app-interface registration are untouched.
    inside a HyperShell sandbox, plus `node`/`go`, MCP exposure, native
    subagents, and skills. Screenshots need both sides compatible at runtime:
    the fixed upload helper ships in the browser preset inside this
-   repository's runner image (rebuilt from `6b4f296`+), while the service
+   repository's runner image (rebuilt from `f23332e`+), while the service
    gateway route and the upload-only sandbox permission ship in the
    dispatcher image; the legacy unauthenticated upload flow is unchanged.
    Staging checks of the actual upload and the returned asset link are still
